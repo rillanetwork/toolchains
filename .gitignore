@@ -1,0 +1,24 @@
+# General
+*~
+\#*\#
+.\#*
+.DS_Store
+.idea
+*.log
+tmp/
+
+# Direnv
+/.direnv
+
+# Nix
+/result
+
+# CMake
+CMakeFiles
+/build
+/built-*
+
+# Archives
+*.gz
+*.tar
+*.zst

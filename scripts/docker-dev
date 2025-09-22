@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "${0%/*}/.."
+
+#
+# Run a docker container that mounts this git repository and allows testing
+# the build process using existing the ./scripts dir.
+#
+
+tag="toolchains:latest"
+
+docker build -t "$tag" .
+
+exec docker run --rm -it --volume "$PWD:/home/ubuntu/toolchain" "$tag"

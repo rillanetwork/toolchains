@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+IFS=$'\n\t'
+
+cd "${0%/*}/.."
+
+#
+# Install necessary dependencies for building LLVM + sysroot(s).
+#
+# Supports non-GitHub VM/container images so the scripts can be run in docker.
+#
+
+GITHUB_ACTIONS="${GITHUB_ACTIONS:-}"
+
+export DEBIAN_FRONTEND=noninteractive
+
+say() {
+    printf >&2 '%s\n' "$1"
+}
+
+has() {
+    type "$1" &>/dev/null
+}
+
+with_sudo() {
+    if [ -n "$GITHUB_ACTIONS" ]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
+
+with_sudo apt-get update
+with_sudo apt-get install -y \
+    help2man                 \
+    libtool-bin
+
+if [ -z "$GITHUB_ACTIONS" ]; then
+    # The following packages are preinstalled on GitHub Actions' VMs.
+    with_sudo apt-get install -y \
+        autoconf                 \
+        bison                    \
+        build-essential          \
+        cmake                    \
+        curl                     \
+        diffutils                \
+        flex                     \
+        gawk                     \
+        git                      \
+        libarchive-tools         \
+        ncurses-dev              \
+        ninja-build              \
+        python3-dev              \
+        unzip                    \
+        zlib1g-dev               \
+        zstd                     \
+        libzstd-dev
+fi
+
+for tool in cmake ninja curl git zstd; do
+    if ! has "$tool"; then
+        say "Error: $tool is missing"
+        exit 1
+    fi
+done
+
+# https://lists.gnu.org/archive/html/bug-texinfo/2024-05/msg00000.html
+with_sudo apt-get remove texinfo
+
+texinfo="$(mktemp -d)"
+
+trap 'rm -rf -- "$texinfo"' EXIT
+
+curl -L https://mirrors.ocf.berkeley.edu/gnu/texinfo/texinfo-7.2.tar.gz \
+    | tar --strip-components=1 -zx -C "$texinfo"
+
+pushd "$texinfo"
+
+./configure
+
+make
+
+with_sudo make install
+
+popd

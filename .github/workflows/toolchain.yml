@@ -1,0 +1,190 @@
+name: Toolchain
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+  packages: write
+jobs:
+  build-gcc:
+    strategy:
+      matrix:
+        target:
+          - name: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04-xl
+          # - name: aarch64-unknown-linux-gnu
+          #   os: ubuntu-24.04-arm
+          - name: x86_64-unknown-linux-musl
+            os: ubuntu-22.04-xl
+          # - name: aarch64-unknown-linux-musl
+          #   os: ubuntu-24.04-arm
+    name: gcc-${{ matrix.target.name }}.tar
+    runs-on: ${{ matrix.target.os }}
+    env:
+      TARGET_NAME: ${{ matrix.target.name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: built-gcc
+          key: gcc-${{ matrix.target.os }}-${{ matrix.target.name }}-${{ hashFiles('toolchain/gcc/**/*') }}
+      - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          # This exists to install texinfo-7.2 from source.
+          #
+          # All other dependencies are preinstalled, but keeping this as a
+          # script makes it easier to track dependencies and test locally
+          # in docker.
+          ./scripts/install-dependencies
+      - name: Configure GCC
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make configure-gcc
+      - name: Build GCC
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make build-gcc
+      - name: Create shared GCC artifact
+        run: |
+          make package-gcc
+      - name: Upload GCC artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-${{ matrix.target.name }}
+          path: gcc-${{ matrix.target.name }}.tar
+          if-no-files-found: error
+  build-sysroot:
+    needs: build-gcc
+    strategy:
+      matrix:
+        target:
+          - name: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04-xl
+          # - name: aarch64-unknown-linux-gnu
+          #   os: ubuntu-24.04-arm
+          - name: x86_64-unknown-linux-musl
+            os: ubuntu-22.04-xl
+          # - name: aarch64-unknown-linux-musl
+          # os: ubuntu-24.04-arm
+    name: sysroot-${{ matrix.target.name }}.tar.zst
+    runs-on: ${{ matrix.target.os }}
+    env:
+      TARGET_NAME: ${{ matrix.target.name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: build/*.tar.zst
+          key: sysroot-${{ matrix.target.os }}-${{ matrix.target.name }}-${{ hashFiles('toolchain/**/*') }}
+      - name: Download GCC artifact (singular)
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: gcc-${{ matrix.target.name }}
+      - name: Extract shared GCC artifact
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make extract-gcc
+      - name: Configure toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make configure-toolchain
+      - name: Build sysroot
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make build-sysroot
+      - name: Upload sysroot
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysroot-${{ matrix.target.name }}
+          path: build/sysroot-${{ matrix.target.name }}.tar.zst
+          if-no-files-found: error
+  build-llvm:
+    needs: build-gcc
+    strategy:
+      matrix:
+        target:
+          - name: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04-xl
+          # - name: aarch64-unknown-linux-gnu
+          #   os: ubuntu-24.04-arm
+          - name: arm64-apple-macos
+            os: macos-14
+          # - name: x86_64-pc-windows-msvc
+          #   os: windows-11
+          # - name: arm64-pc-windows-msvc
+          #   os: windows-11-arm
+    name: llvm.${{ matrix.target.name }}.tar.zst
+    runs-on: ${{ matrix.target.os }}
+    env:
+      TARGET_NAME: ${{ matrix.target.name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: build/*.tar.zst
+          key: llvm-${{ matrix.target.os }}-${{ matrix.target.name }}-${{ hashFiles('toolchain/**/*') }}
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Download GCC artifacts (plural)
+        if: ${{ contains(matrix.target.name, 'linux') && steps.cache.outputs.cache-hit != 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gcc-*
+      - name: Extract shared GCC artifact(s)
+        if: ${{ contains(matrix.target.name, 'linux') && steps.cache.outputs.cache-hit != 'true' }}
+        run: |
+          make extract-gcc
+      - name: Configure toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make configure-toolchain
+      - name: Build LLVM
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          make build-llvm
+      - name: Upload CMake output
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cmake-output-llvm-${{ matrix.target.name }}
+          path: |
+            build/.ninja_log
+            build/llvm-prefix/src/llvm-build/CMakeCache.txt
+            build/llvm-prefix/src/llvm-build/CMakeFiles/CMakeConfigureLog.yaml
+      - name: Upload llvm
+        uses: actions/upload-artifact@v4
+        with:
+          name: llvm-${{ matrix.target.name }}
+          path: build/llvm-${{ matrix.target.name }}.tar.zst
+          if-no-files-found: error
+  release:
+    needs:
+      - build-sysroot
+      - build-llvm
+    name: Release
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-22.04-xl
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '{llvm,sysroot}-*'
+          path: artifacts/
+          merge-multiple: True
+      - run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+          VERSION=toolchain-$(date +%Y.%m.%d)
+
+          git tag -a $VERSION -m "Release $VERSION"
+          git push --tags
+
+          gh release create $VERSION artifacts/*
+        env:
+          GH_TOKEN: ${{ github.token }}

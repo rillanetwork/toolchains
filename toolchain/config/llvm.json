@@ -1,0 +1,8 @@
+{
+  "directories": [
+    {
+      "source": "@llvm_dir@",
+      "target": ""
+    }  
+  ]
+}
