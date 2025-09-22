@@ -1,10 +1,10 @@
 # Build zlib, LLVM, compiler-rt, and openmp for each target
 
 set(toolchain_targets
+    "aarch64-unknown-linux-gnu"
+    "aarch64-unknown-linux-musl"
     "x86_64-unknown-linux-gnu"
-    # "aarch64-unknown-linux-gnu"
     "x86_64-unknown-linux-musl"
-    # "aarch64-unknown-linux-musl"
 )
 
 function(get_gcc_toolchain_flags var triple)

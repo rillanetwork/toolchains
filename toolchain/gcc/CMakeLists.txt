@@ -4,10 +4,10 @@ project(GccImplementation NONE)
 include(ExternalProject)
 
 set(toolchain_targets
+    "aarch64-unknown-linux-gnu"
+    "aarch64-unknown-linux-musl"
     "x86_64-unknown-linux-gnu"
-    # "aarch64-unknown-linux-gnu"
     "x86_64-unknown-linux-musl"
-    # "aarch64-unknown-linux-musl"
 )
 
 ExternalProject_Add(crosstool-ng
