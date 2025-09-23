@@ -117,7 +117,7 @@ jobs:
             os: windows-2025
           - name: arm64-pc-windows-msvc
             os: windows-11-arm
-    name: llvm.${{ matrix.target.name }}.tar.zst
+    name: llvm-${{ matrix.target.name }}.tar.zst
     runs-on: ${{ matrix.target.os }}
     env:
       TARGET_NAME: ${{ matrix.target.name }}
